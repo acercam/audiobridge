@@ -1,0 +1,19 @@
+[package]
+name = "audiobridge"
+version = "0.1.0"
+edition = "2021"
+description = "Low-latency bidirectional audio bridge over UDP (Tailscale-friendly)"
+license = "MIT"
+readme = "README.md"
+
+[[bin]]
+name = "audiobridge"
+path = "src/main.rs"
+
+[dependencies]
+audiopus = "0.2"
+clap = { version = "4", features = ["derive"] }
+cpal = "0.15"
+crossbeam-channel = "0.5"
+crossterm = "0.28"
+socket2 = { version = "0.5", features = ["all"] }
