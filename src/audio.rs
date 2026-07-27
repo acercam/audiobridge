@@ -265,14 +265,6 @@ fn build_output_stream(
     }
 }
 
-pub fn default_linux_device() -> Option<String> {
-    if cfg!(target_os = "linux") {
-        Some("USB Audio Device".to_string())
-    } else {
-        None
-    }
-}
-
 pub fn resolve_device_name(cli: Option<String>) -> Option<String> {
-    cli.or_else(default_linux_device)
+    cli
 }

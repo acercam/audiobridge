@@ -200,6 +200,14 @@ fn spawn_keyboard(flags: Arc<SessionFlags>) {
     });
 }
 
+fn send_packet(socket: &UdpSocket, role: Role, packet: &[u8], addr: SocketAddr) -> io::Result<usize> {
+    if role == Role::Client {
+        socket.send(packet)
+    } else {
+        socket.send_to(packet, addr)
+    }
+}
+
 fn spawn_audio_pipeline(
     buffers: AudioBuffers,
     codec: Arc<Mutex<OpusCodec>>,
@@ -227,14 +235,14 @@ fn spawn_audio_pipeline(
             if was_paused {
                 was_paused = false;
                 if let Some(addr) = *peer.lock().unwrap() {
-                    let _ = socket.send_to(&encode_simple(TYPE_RESUME), peer_dest(role, addr));
+                    let _ = send_packet(&socket, role, &encode_simple(TYPE_RESUME), addr);
                 }
             }
 
             if ping_at.elapsed() >= Duration::from_secs(2) {
                 if let Some(addr) = *peer.lock().unwrap() {
                     let ping = encode_ping(now_ms());
-                    let _ = socket.send_to(&ping, peer_dest(role, addr));
+                    let _ = send_packet(&socket, role, &ping, addr);
                 }
                 ping_at = Instant::now();
             }
@@ -262,7 +270,7 @@ fn spawn_audio_pipeline(
                 timestamp = timestamp.wrapping_add(FRAME_MS);
 
                 if let Some(addr) = *peer.lock().unwrap() {
-                    if socket.send_to(&packet, peer_dest(role, addr)).is_ok() {
+                    if send_packet(&socket, role, &packet, addr).is_ok() {
                         tx_bytes += packet.len() as u64;
                     }
                 }
@@ -321,9 +329,16 @@ fn run_recv_loop(
                         let client_port = pkt.seq;
                         let client_addr: SocketAddr =
                             format!("{}:{client_port}", src.ip()).parse()?;
-                        *peer.lock().unwrap() = Some(client_addr);
+                        let is_new = {
+                            let mut p = peer.lock().unwrap();
+                            let was = *p;
+                            *p = Some(client_addr);
+                            was != Some(client_addr)
+                        };
                         socket.send_to(&encode_simple(TYPE_HELLO_ACK), client_addr)?;
-                        eprintln!("\rClient connected: {client_addr}");
+                        if is_new {
+                            eprintln!("\rClient connected: {client_addr}");
+                        }
                     }
 
                     handle_control(&pkt, &flags, &stats, &peer, &socket, role)?;
@@ -398,7 +413,7 @@ fn run_recv_loop(
     }
 
     if let Some(addr) = *peer.lock().unwrap() {
-        let _ = socket.send_to(&encode_simple(TYPE_BYE), peer_dest(role, addr));
+        let _ = send_packet(&socket, role, &encode_simple(TYPE_BYE), addr);
     }
     Ok(())
 }
@@ -415,7 +430,7 @@ fn handle_control(
         PacketKind::Ping => {
             if let Some(addr) = *peer.lock().unwrap() {
                 let pong = encode_pong(pkt.timestamp);
-                socket.send_to(&pong, peer_dest(role, addr))?;
+                send_packet(socket, role, &pong, addr)?;
             }
         }
         PacketKind::Pong => {
